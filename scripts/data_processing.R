@@ -2,6 +2,7 @@
 
 bird_data = read.csv("./data/Namdapha_Flock_Data.csv", header = T)
 flocktypes = read.csv("./data/flocktypes.csv")
+flockpoints = read.csv("./data/flock_points_table.csv")
 species_names <- colnames(bird_data)
 
 select <- dplyr::select
@@ -103,8 +104,10 @@ par(mar=c(4,4,4,4))
 x_seq <- seq(min(x), max(x), length.out = 100)
 y_pred <- predict(model, newdata = data.frame(x = x_seq))
 
-weighted_vocal_table = vocal_table %>% 
-  mutate(weight = y_pred[x], weighted_vocal_participation = vocal_participation / (weight+(1-b)))
+weighted_vocal_table <- vocal_table %>%
+  mutate(weight = y_pred[x], weighted_vocal_participation = vocal_participation / (weight + (1 - b))) %>%
+  left_join(flockpoints, by = "flock_ID")
+
 # Tables for each flock type ==========================================================================================================================
 
 frequencies = as.data.frame(table(weighted_vocal_table$flock_ID))
@@ -119,7 +122,7 @@ s_table = weighted_vocal_table %>% filter(flocktype == "S") %>%
                                      percent_flocks = (table(species_ID)/80))
 lc_table = weighted_vocal_table %>% filter(flocktype == "LC") %>% 
   group_by(species_ID) %>% summarise(mean_vp = mean(vocal_participation), mean_weighted_vp = mean(weighted_vocal_participation),
-                                     percent_flocks = (table(species_ID)/44))
+                                     percent_flocks = (table(species_ID)/43))
 lu_table = weighted_vocal_table %>% filter(flocktype == "LU") %>% 
   group_by(species_ID) %>% summarise(mean_vp = mean(vocal_participation), mean_weighted_vp = mean(weighted_vocal_participation),
                                      percent_flocks = (table(species_ID)/24))
@@ -278,3 +281,49 @@ bird_data <- read.csv("./data/Namdapha_Flock_Data.csv", header = T)
 nmds = metaMDS(bird_data, distance = "bray", k = 2, maxit = 999)
 nmds_dat = as_tibble(nmds$points)
 nmds_dat = nmds_dat %>% mutate(FlockType = as.factor(flocktypes$flock_type))
+
+
+# Creating a table with all coefficients for PCA ==========================================================================================================================
+
+all_coefficients_table <- propensity.table2 %>%
+  left_join(weighted_vocal_table2 %>% select(-any_of(setdiff(names(propensity.table2), "species_ID"))), 
+            by = "species_ID") %>% select(species_ID, propensity, mean_vp, avg_group_size, lead_proportion, leader_yn)
+
+# Select only numeric columns for PCA
+pca_data <- all_coefficients_table %>%
+  select(species_ID, leader_yn, propensity, mean_vp, avg_group_size, lead_proportion)
+
+# Perform PCA (scale = TRUE standardizes the variables)
+pca_result <- prcomp(pca_data %>% select(propensity, mean_vp, avg_group_size, lead_proportion),
+                     scale. = TRUE)
+
+# Extract PCA scores and combine with metadata
+pca_scores <- as.data.frame(pca_result$x) %>%
+  mutate(species_ID = pca_data$species_ID,
+         leader_yn = pca_data$leader_yn)
+
+# Additional Analyses - DHARMa coefficients for model diagnostics =============================================================================================================
+
+#Residuals
+res_s <- simulateResiduals(fittedModel = beta_s)
+res_lc <- simulateResiduals(fittedModel = beta_lc)
+res_sp <- simulateResiduals(fittedModel = beta_sp)
+res_lcp <- simulateResiduals(fittedModel = beta_lcp)
+res_lead <- simulateResiduals(fittedModel = beta_leadership)
+res_group <- simulateResiduals(fittedModel = beta_groupsize)
+
+#Dispersion
+res_s_dispersion = testDispersion(res_s)
+res_lc_dispersion = testDispersion(res_lc)
+res_sp_dispersion = testDispersion(res_sp)
+res_lcp_dispersion = testDispersion(res_lcp)
+res_lead_dispersion = testDispersion(res_lead)
+res_group_dispersion = testDispersion(res_group)
+
+# R-square
+beta_s_r2 = r2(beta_s)
+beta_lc_r2 = r2(beta_lc)
+beta_sp_r2 = r2(beta_sp)
+beta_lcp_r2 = r2(beta_lcp)
+beta_leadership_r2 = r2(beta_leadership)
+beta_groupsize_r2 = r2(beta_groupsize)

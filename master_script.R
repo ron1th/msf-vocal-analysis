@@ -7,6 +7,10 @@ library(glmmTMB)
 library(moments)
 library(PERMANOVA)
 library(iNEXT)
+library(vegan)
+library(patchwork)
+library(DHARMa)
+library(performance)
 
 source("./scripts/data_processing.R")
 
@@ -52,12 +56,11 @@ ggsave(filename = "./outputs/plots/vocal_dist_hist.jpg", plot = vocal_dist_hist,
 leaders_nonleaders_boxplot = 
   ggplot(weighted_vocal_table2, aes(x = factor(leader_yn), y = mean_vp, fill = factor(leader_yn))) +
   geom_boxplot(width = 0.6, position = position_dodge(0.9)) +  # Increase the width of the box plot
-  geom_violin(trim = FALSE, alpha = 0.3, width = 0.4) +    # Decrease the width of the violin plot
   labs(x = "", y = "Mean Vocal Participation") + 
   theme_classic() + 
-  theme(legend.position = "none", axis.title = element_text(size = 20), axis.text.x = element_text(size = 15)) +
+  theme(legend.position = "none", axis.title = element_text(size = 20), axis.text.x = element_text(size = 20)) +
   scale_fill_manual(values = c("#CD5B45", "#0387ad")) +  # Purple and green colors
-  scale_y_continuous(limits = c(-0.15, 1.08))
+  scale_y_continuous(limits = c(0, 1.00), breaks = c(0, 0.25,0.50, 0.75, 1.00))
 
 ggsave(filename = "./outputs/plots/leaders_nonleaders_boxplot.jpg", plot = leaders_nonleaders_boxplot, device = "jpeg", dpi = 300, width = 9, height = 6, units = "in")
 
@@ -93,7 +96,7 @@ ggsave(filename = "./outputs/plots/richness_boxplot.jpg", plot = richness_boxplo
 bodymass_boxplot = 
   ggplot(bodymass_table, aes(x = flocktype, y = mean_bodymass, fill = flocktype)) +
   geom_boxplot(width = 0.6, position = position_dodge(0.9)) +  # Increase the width of the box plot
-  geom_violin(trim = FALSE, alpha = 0.3, width = 0.6) +    # Decrease the width of the violin plot
+  stat_summary(fun = mean, geom = "point", shape = 24, size = 2, color = "black", fill = NA, position = position_dodge(0.9)) +
   labs(x = "", y = "Mean Body Mass (g)") +  
   theme_classic() + 
   theme(axis.title = element_text(size = 16), 
@@ -153,7 +156,7 @@ ggsave(filename = "./outputs/plots/leadership_beta.jpg", plot = leadership_beta,
 
 # Degree Centrality vs. VP Beta GLM =================================================================================
 
-y_limits <- c(-.12, .85)  # Adjust these values as needed
+y_limits <- c(-.12, 1.05)  # Adjust these values as needed
 x_limits <- c(0.25, 1)  # Adjust these values as needed
 
 aa = ggplot(s_plot, aes(x = s_degree, y = mean_vp)) +
@@ -168,7 +171,7 @@ aa = ggplot(s_plot, aes(x = s_degree, y = mean_vp)) +
         axis.title.x = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("a) Small-bodied Flocks") +
   scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) +
-  xlim(x_limits)
+  scale_x_continuous(limits = c(0.3,1))
 
 bb = ggplot(lc_plot, aes(x = lc_degree, y = mean_vp)) + 
   geom_point(size = 3, shape = 21, fill = "#02a890", colour = "#027d68", stroke = 1.2, alpha = .7) + 
@@ -182,7 +185,7 @@ bb = ggplot(lc_plot, aes(x = lc_degree, y = mean_vp)) +
         axis.title.x = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("b) Large-bodied Canopy Flocks") +
   scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) + 
-  xlim(x_limits)
+  scale_x_continuous(limits = c(0.3,1))
 
 cc = ggplot(lu_plot, aes(x = lu_degree, y = mean_vp)) + 
   geom_point(size = 3, shape = 21, fill = "#87CEEB", colour = "#4682B4", stroke = 1.2, alpha = .7) + 
@@ -196,12 +199,13 @@ cc = ggplot(lu_plot, aes(x = lu_degree, y = mean_vp)) +
         axis.title.y = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("c) Large-bodied Undergrowth Flocks") +
   scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) + 
-  xlim(x_limits)
+  scale_x_continuous(limits = c(0.3,1))
 
 # aa + bb + cc + plot_layout(ncol = 1)
 centrality_beta = 
   aa + bb + plot_layout(ncol = 2) + plot_annotation(caption = "Degree Centrality", 
                                                   theme = theme(plot.caption = element_text(hjust = 0.5, size=15)))
+
 
 ggsave(filename = "./outputs/plots/centrality_beta.jpg", plot = centrality_beta, device = "jpeg", dpi = 300, width = 8, height = 4, units = "in")
 
@@ -221,7 +225,7 @@ ap = ggplot(s_plot, aes(x = percent_flocks, y = mean_vp)) +
   theme(axis.title = element_text(size = 15),
         axis.title.x = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("a) Small-bodied Flocks") +
-  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits2) +
+  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) +
   scale_x_continuous(limits = c(0,1))
 
 # Plot with bb colors
@@ -236,7 +240,7 @@ bp = ggplot(lc_plot, aes(x = percent_flocks, y = mean_vp)) +
   theme(axis.title = element_text(size = 15),
         axis.title.x = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("b) Large-bodied Canopy Flocks") +
-  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits2) +
+  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) +
   scale_x_continuous(limits = c(0,1))
 
 # Plot with cc colors
@@ -251,7 +255,7 @@ cp = ggplot(lu_plot, aes(x = percent_flocks, y = mean_vp)) +
   theme(axis.title = element_text(size = 15),
         axis.title.y = element_blank(), plot.title = element_text(size=10)) +
   ggtitle("c) Large-bodied Undergrowth Flocks") +
-  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits2) +
+  scale_y_continuous(expand = c(0.05, 0.05), limits = y_limits) +
   scale_x_continuous(limits = c(0,1))
 
 
@@ -263,6 +267,16 @@ proportion_beta =
 ggsave(filename = "./outputs/plots/proportion_beta.jpg", plot = proportion_beta, device = "jpeg", dpi = 300, width = 8, height = 4, units = "in")
 
 
+# Species PCA ==========================================================================================================================
+
+pca = ggplot(pca_scores, aes(x = PC1, y = PC2, label = species_ID, color = leader_yn, fill = leader_yn)) +
+  geom_point(size = 3, shape = 21, stroke = 1.2, alpha = 0.7) +
+  #geom_text(vjust = -0.5, size = 3) +
+  stat_ellipse(level = 0.95, linetype = "dashed") +
+  labs(title = "", x = "PC1", y = "PC2", color = "Levels", fill = "Levels") +
+  theme_classic()
+
+ggsave(filename = "./outputs/plots/species_pca.jpg", plot = pca, device = "jpeg", dpi = 300, width = 8, height = 4, units = "in")
 
 
 
@@ -423,3 +437,7 @@ write.csv(groupsize_coefficients, "./outputs/tables/groupsize_coefficients.csv",
 
 stress <- nmds$stress
 write.csv(stress, "./outputs/tables/nmds_stress.csv", row.names = FALSE)
+
+#Bodymass table=========================================================================================================
+
+write.csv(bodymass_table, "./outputs/tables/bodymass_table.csv", row.names = FALSE)
